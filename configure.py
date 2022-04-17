@@ -123,7 +123,7 @@ def locate_vcvars_files():
 
 def find_lib_in_platform(vcvars_cmd):
     p = subprocess.Popen(['cmd.exe'], stdin=PIPE, stdout=PIPE, stderr=STDOUT)
-    commands = [vcvars_cmd, 'lib /?', 'exit']
+    commands = ['"{}"'.format(vcvars_cmd), 'lib /?', 'exit']
     cmd = '\n'.join(commands) + '\n'
     send_commands = cmd.encode('utf-8')
     check = p.communicate(input=send_commands, timeout=15)[0]

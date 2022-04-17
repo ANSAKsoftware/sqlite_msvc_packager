@@ -31,14 +31,15 @@ import urllib.request
 import zipfile
 
 try:
-    from configvars import PREFIX, VCVARS_32, VCVARS_64, MAKE_NSIS, SQLITE_DL_PAGE
+    from configvars import PREFIX, VCVARS_32, VCVARS_64, MAKE_NSIS, \
+                           SQLITE_DL_PAGE
 except ModuleNotFoundError:
     print("run .\\configure.cmd before doing make")
     sys.exit(1)
 
 
-SQLITE_ROOT = 'https://sqlite.org'
-DOWNLOAD_PAGE = 'download.html'
+SQLITE_ROOT = os.path.dirname(SQLITE_DL_PAGE)
+DOWNLOAD_PAGE = os.path.basename(SQLITE_DL_PAGE)
 CMD = 'c:\\windows\\system32\\cmd.exe'
 C = '/c'
 CMAKE = 'cmake'
@@ -205,24 +206,28 @@ class Maker:
             if fn.endswith('zip'):
                 rm_f(os.path.join(self.build_dir_, fn))
             elif fn.startswith('sqlite-amalgamation'):
-                Proc(CMD, C, 'rmdir', '/s', '/q', os.path.join(self.build_dir_, fn)).run()
+                Proc(CMD, C, 'rmdir', '/s', '/q', os.path.join(self.build_dir_,
+                                                               fn)).run()
 
         # download the things
-        with urllib.request.urlopen('/'.join([SQLITE_ROOT, DOWNLOAD_PAGE])) as u:
+        download_page_url = '/'.join([SQLITE_ROOT, DOWNLOAD_PAGE])
+        with urllib.request.urlopen(download_page_url) as u:
             html_lines = u.read().decode('utf-8').split('\n')
         # parse out the three lines
         download_lines = [line for line in html_lines
                           if line.startswith('PRODUCT') and
-                             (line.find('dll-win') >= 0 or
-                              line.find('amalgam') >= 0)]
+                          (line.find('dll-win') >= 0 or line.find('amalgam') >=
+                           0)]
 
-        tSources = [l.split(',') for l in download_lines]
-        targets = [{'suburl':l[2], 'size':int(l[3]), 'sha3sum':l[4]} for l in tSources]
+        tSources = [line.split(',') for line in download_lines]
+        targets = [{'suburl': line[2], 'size': int(line[3]), 'sha3sum': line[4]
+                    } for line in tSources]
+        print("Downloaded, parsed {} successfully".format(download_page_url))
 
         def downloadTarget(dt):
             dt['fname'] = os.path.basename(dt["suburl"])
             with urllib.request.urlopen('/'.join([SQLITE_ROOT, dt["suburl"]])
-                                       ) as u:
+                                        ) as u:
                 payload = u.read()
             if len(payload) != dt["size"]:
                 message = "{} downloaded but wrong size: {} vs. {}"
@@ -242,6 +247,7 @@ class Maker:
         # download the three zip files and validate them
         for t in targets:
             downloadTarget(t)
+            print("Downloaded target: {}".format(t["fname"]))
 
         # unpack the downloads
         for t in targets:
@@ -254,7 +260,8 @@ class Maker:
             elif t["fname"].find('amalgam') >= 0:
                 with zipfile.ZipFile(t["destfile"], 'r') as zipf:
                     zipf.extractall(self.build_dir_)
-                name = [name for name in os.listdir(self.build_dir_) if name.startswith('sqlite') and not 'dll-' in name][0]
+                name = [name for name in os.listdir(self.build_dir_) if
+                        name.startswith('sqlite') and 'dll-' not in name][0]
                 fn_sqlite3_h = os.path.join(self.build_dir_, name, 'sqlite3.h')
                 fn_sqlite3ext_h = os.path.join(self.build_dir_, name,
                                                'sqlite3ext.h')
@@ -281,11 +288,13 @@ class Maker:
                   os.path.join(self.win32_dir_, 'sqlite3-Win32.dll'))
         os.rename(os.path.join(self.x64_dir_, 'sqlite3.dll'),
                   os.path.join(self.x64_dir_, 'sqlite3-x64.dll'))
+        print("Processed def files and dlls")
 
         # lib the .defs into .libs
         def defIntoLib(theDir, theSetup, theMachine):
-            p = subprocess.Popen(['cmd.exe'], cwd=theDir, stdin=subprocess.PIPE,
-                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            p = subprocess.Popen(['cmd.exe'], cwd=theDir,
+                                 stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                 stderr=subprocess.STDOUT)
             commands = [theSetup,
                         'lib /DEF:sqlite3.def /MACHINE:{} /OUT:sqlite3.lib',
                         'exit']
@@ -304,8 +313,10 @@ class Maker:
                           theDir, theMachine)
                 raise Exception(message)
 
-        defIntoLib(self.win32_dir_, VCVARS_32, 'X86')
-        defIntoLib(self.x64_dir_, VCVARS_64, 'X64')
+        defIntoLib(self.win32_dir_, '"{}"'.format(VCVARS_32), 'X86')
+        print("Created lib file for Win32 SQLite")
+        defIntoLib(self.x64_dir_, '"{}"'.format(VCVARS_64), 'X64')
+        print("Created lib file for x64 SQLite")
         self.done_.add('all')
         self.step_performed_ = True
         with open('build\\all.touch', 'w') as f:
@@ -324,7 +335,8 @@ class Maker:
                          paths['lib_win32_root'])
             shutil.copy2(os.path.join('build', 'x64', 'sqlite3.lib'),
                          paths['lib_x64_root'])
-            shutil.copy2(os.path.join('build', 'sqlite3.h'), paths['include_root'])
+            shutil.copy2(os.path.join('build', 'sqlite3.h'),
+                         paths['include_root'])
             shutil.copy2(os.path.join('build', 'sqlite3ext.h'),
                          paths['include_root'])
             shutil.copy2(os.path.join('build', 'Win32', 'sqlite3-Win32.dll'),
@@ -387,14 +399,20 @@ class Maker:
         for f in os.listdir('NSIS'):
             shutil.copy2(os.path.join('NSIS', f), nsis_dests['nsis'])
 
-        shutil.copy2(os.path.join(self.build_dir_, "sqlite3.h"), nsis_dests['include'])
-        shutil.copy2(os.path.join(self.build_dir_, "sqlite3ext.h"), nsis_dests['include'])
+        shutil.copy2(os.path.join(self.build_dir_, "sqlite3.h"),
+                     nsis_dests['include'])
+        shutil.copy2(os.path.join(self.build_dir_, "sqlite3ext.h"),
+                     nsis_dests['include'])
 
-        shutil.copy2(os.path.join(self.win32_dir_, 'sqlite3.lib'), nsis_dests['lib_win32'])
-        shutil.copy2(os.path.join(self.x64_dir_, 'sqlite3.lib'), nsis_dests['lib_x64'])
+        shutil.copy2(os.path.join(self.win32_dir_, 'sqlite3.lib'),
+                     nsis_dests['lib_win32'])
+        shutil.copy2(os.path.join(self.x64_dir_, 'sqlite3.lib'),
+                     nsis_dests['lib_x64'])
 
-        shutil.copy2(os.path.join(self.win32_dir_, 'sqlite3-Win32.dll'), nsis_dests['bin'])
-        shutil.copy2(os.path.join(self.x64_dir_, 'sqlite3-x64.dll'), nsis_dests['bin'])
+        shutil.copy2(os.path.join(self.win32_dir_, 'sqlite3-Win32.dll'),
+                     nsis_dests['bin'])
+        shutil.copy2(os.path.join(self.x64_dir_, 'sqlite3-x64.dll'),
+                     nsis_dests['bin'])
 
         # create the install set, move it to ./build
         def run_nsis():
@@ -413,9 +431,8 @@ class Maker:
                 else:
                     rm_f(path)
 
-        deleteThese([self.win32_dir_, self.x64_dir_,
-                     MakerDirs.nsis_dests()['nsis'], self.package_path_])
-        deleteThese(MakerDirs.touch_files())
+        deleteThese(os.path.join('build', name) for name in
+                    os.listdir('build'))
 
         self.step_performed_ = True
 
