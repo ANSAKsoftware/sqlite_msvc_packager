@@ -251,10 +251,12 @@ class Maker:
 
         # unpack the downloads
         for t in targets:
-            if t["fname"].find('dll-win32') >= 0:
+            if t["fname"].find('dll-win32') >= 0 or t["fname"].find(
+                    'dll-win-x86') >= 0:
                 with zipfile.ZipFile(t["destfile"], 'r') as zipf:
                     zipf.extractall(self.win32_dir_)
-            elif t["fname"].find('dll-win64') >= 0:
+            elif t["fname"].find('dll-winx64') >= 0 or t["fname"].find(
+                    'dll-win-x64') >= 0:
                 with zipfile.ZipFile(t["destfile"], 'r') as zipf:
                     zipf.extractall(self.x64_dir_)
             elif t["fname"].find('amalgam') >= 0:
